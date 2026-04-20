@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Enterprise Job Keyword Scanner</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 2rem; color: #222; }
+    h1 { margin-bottom: 0.5rem; }
+    .sub { color: #666; margin-bottom: 1.5rem; }
+    form { border: 1px solid #ddd; padding: 1rem; border-radius: 8px; max-width: 900px; }
+    label { display: block; font-weight: 600; margin-top: 0.8rem; }
+    input[type="text"], input[type="number"] { width: 100%; padding: 0.6rem; margin-top: 0.35rem; box-sizing: border-box; }
+    button { margin-top: 1rem; padding: 0.6rem 1rem; background: #0052cc; color: #fff; border: none; border-radius: 6px; cursor: pointer; }
+    button:hover { background: #003f9e; }
+    .error { margin-top: 1rem; color: #b00020; font-weight: 600; }
+    .card { margin-top: 1.25rem; border: 1px solid #ddd; border-radius: 8px; padding: 1rem; max-width: 1000px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 0.8rem; }
+    th, td { border-bottom: 1px solid #eee; padding: 0.5rem; text-align: left; vertical-align: top; }
+    th { background: #f8f8f8; }
+    .muted { color: #666; }
+  </style>
+</head>
+<body>
+  <h1>Enterprise Job Keyword Scanner</h1>
+  <p class="sub">
+    Scan public job listings and surface enterprise companies (&gt; 1,000 employees)
+    mentioning tools like OpenAI, Cursor, GitHub Copilot, Claude Code, and Windsurf.
+  </p>
+
+  <form method="post" action="/scan">
+    <label for="keywords">Keywords (comma-separated)</label>
+    <input
+      id="keywords"
+      name="keywords"
+      type="text"
+      value="{{ keyword_input }}"
+      placeholder="{{ default_keywords }}"
+    >
+
+    <label for="pages">Pages to scan (The Muse API)</label>
+    <input id="pages" name="pages" type="number" min="1" max="20" value="{{ pages }}">
+
+    <button type="submit">Run Scan</button>
+  </form>
+
+  {% if error %}
+  <p class="error">{{ error }}</p>
+  {% endif %}
+
+  {% if result %}
+  <section class="card">
+    <h2>Scan Results</h2>
+    <p class="muted">
+      Scanned jobs: {{ result.scanned_jobs }} |
+      Enterprise jobs: {{ result.enterprise_jobs }} |
+      Matches: {{ result.matches | length }}
+    </p>
+    <p class="muted"><strong>Keywords:</strong> {{ result.keywords | join(", ") }}</p>
+
+    {% if result.matches %}
+    <table>
+      <thead>
+        <tr>
+          <th>Company</th>
+          <th>Title</th>
+          <th>Location</th>
+          <th>Matched Keywords</th>
+          <th>Link</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for match in result.matches %}
+        <tr>
+          <td>{{ match.company }}</td>
+          <td>{{ match.title }}</td>
+          <td>{{ match.location }}</td>
+          <td>{{ match.matched_keywords | join(", ") }}</td>
+          <td>
+            {% if match.url %}
+            <a href="{{ match.url }}" target="_blank" rel="noreferrer">View posting</a>
+            {% else %}
+            N/A
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p>No matching enterprise job postings were found for the selected keywords.</p>
+    {% endif %}
+  </section>
+  {% endif %}
+</body>
+</html>
