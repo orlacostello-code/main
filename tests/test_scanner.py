@@ -136,3 +136,19 @@ def test_scan_uses_default_keywords_when_empty_input():
     assert summary.matches[0].matched_keywords == ["Windsurf"]
     assert summary.matches[1].source == "Lever"
     assert summary.matches[1].matched_keywords == ["Windsurf"]
+
+
+def test_load_enterprise_companies_supports_employee_column_variants() -> None:
+    class EnterpriseCSVScanner(JobScanner):
+        def _get_text(self, url: str) -> str:
+            return (
+                "company,num. of employees\n"
+                "Acme Corp,5000\n"
+                "Small Co,500\n"
+                "Big Co,1200\n"
+            )
+
+    scanner = EnterpriseCSVScanner(config=AppConfig(min_employee_count=1000))
+    companies = scanner.load_enterprise_companies()
+
+    assert companies == {"acme corp", "big co"}

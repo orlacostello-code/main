@@ -62,7 +62,8 @@ python3 -m pytest
 
 ## Notes / next steps
 
-- Current enterprise-company identification is based on Fortune 1000 membership.
+- Current enterprise-company identification is based on Fortune 1000 membership
+  from a public 2021 Fortune dataset with employee counts.
 - Current jobs sources are The Muse, Greenhouse, and Lever public APIs.
 - Greenhouse and Lever use configurable lists of board/site tokens
   in `app/config.py`.

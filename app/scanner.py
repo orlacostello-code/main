@@ -21,15 +21,14 @@ class JobScanner:
 
     def load_enterprise_companies(self) -> Set[str]:
         """Fetch and normalize company names with >= configured employee count."""
-        response = requests.get(
-            self._config.companies_csv_url, timeout=self._timeout_seconds
-        )
-        response.raise_for_status()
-
-        reader = csv.DictReader(StringIO(response.text))
+        csv_text = self._get_text(self._config.companies_csv_url)
+        reader = csv.DictReader(StringIO(csv_text))
         companies: Set[str] = set()
         for row in reader:
-            employees_raw = row.get("employees", "").strip()
+            employees_raw = (
+                row.get("employees", "").strip()
+                or row.get("num. of employees", "").strip()
+            )
             company_name = row.get("company", "").strip()
             if not employees_raw or not company_name:
                 continue
@@ -258,6 +257,12 @@ class JobScanner:
         response = requests.get(url, params=params, timeout=self._timeout_seconds)
         response.raise_for_status()
         return response.json()
+
+    def _get_text(self, url: str) -> str:
+        """GET plain-text content from an endpoint."""
+        response = requests.get(url, timeout=self._timeout_seconds)
+        response.raise_for_status()
+        return response.text
 
 
 def _parse_employee_count(raw: str) -> int:

@@ -18,10 +18,7 @@ DEFAULT_KEYWORDS = [
 ]
 
 # Fortune 1000 list with employee counts.
-COMPANIES_CSV_URL = (
-    "https://raw.githubusercontent.com/hadisalimov/"
-    "f500/main/data/fortune1000-2021.csv"
-)
+COMPANIES_CSV_URL = "https://raw.githubusercontent.com/bdi475/datasets/main/fortune-1000-2021.csv"
 
 # TheMuse has public jobs API without an API key.
 MUSE_JOBS_API_URL = "https://www.themuse.com/api/public/jobs"
