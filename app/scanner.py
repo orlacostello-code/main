@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import csv
 from io import StringIO
-from typing import Dict, Iterable, List, Set
+from typing import Any, Dict, Iterable, List, Set
 
 import requests
 
@@ -42,15 +42,101 @@ class JobScanner:
     def fetch_muse_jobs(self, pages: int) -> Iterable[Dict]:
         """Yield jobs from The Muse public API for requested pages."""
         for page in range(1, pages + 1):
-            response = requests.get(
-                self._config.muse_jobs_url,
-                params={"page": page},
-                timeout=self._timeout_seconds,
-            )
-            response.raise_for_status()
-            payload = response.json()
+            try:
+                payload = self._get_json(
+                    self._config.muse_jobs_url,
+                    params={"page": page},
+                )
+            except requests.RequestException:
+                break
             for item in payload.get("results", []):
                 yield item
+
+    def fetch_greenhouse_jobs(self, pages: int) -> Iterable[Dict]:
+        """Yield jobs from Greenhouse boards API for configured board tokens."""
+        for board in self._config.greenhouse_boards:
+            endpoint = f"{self._config.greenhouse_jobs_base_url}/{board}/jobs"
+            seen_ids: Set[str] = set()
+            for page in range(1, pages + 1):
+                try:
+                    payload = self._get_json(
+                        endpoint,
+                        params={"content": "true", "page": page},
+                    )
+                except requests.RequestException:
+                    # Skip inaccessible boards but continue scanning other sources.
+                    break
+                jobs = payload.get("jobs", []) if isinstance(payload, dict) else []
+                if not jobs:
+                    break
+                new_jobs = 0
+                for item in jobs:
+                    item_id = str(
+                        item.get("id") or item.get("internal_job_id") or ""
+                    ).strip()
+                    dedupe_id = item_id or (item.get("absolute_url") or "")
+                    if dedupe_id and dedupe_id in seen_ids:
+                        continue
+                    if dedupe_id:
+                        seen_ids.add(dedupe_id)
+                    enriched = dict(item)
+                    enriched["__greenhouse_board"] = board
+                    yield enriched
+                    new_jobs += 1
+                # Some boards ignore page and always return all jobs.
+                if new_jobs == 0:
+                    break
+
+    def fetch_lever_jobs(self, pages: int) -> Iterable[Dict]:
+        """Yield jobs from Lever postings API for configured site tokens."""
+        limit = 50
+        for site in self._config.lever_sites:
+            endpoint = f"{self._config.lever_jobs_base_url}/{site}"
+            seen_ids: Set[str] = set()
+            for page in range(1, pages + 1):
+                try:
+                    payload = self._get_json(
+                        endpoint,
+                        params={
+                            "skip": (page - 1) * limit,
+                            "limit": limit,
+                            "mode": "json",
+                        },
+                    )
+                except requests.RequestException:
+                    # Skip inaccessible sites but continue scanning other sources.
+                    break
+                jobs = payload if isinstance(payload, list) else []
+                if not jobs:
+                    break
+                new_jobs = 0
+                for item in jobs:
+                    dedupe_id = str(item.get("id") or item.get("hostedUrl") or "").strip()
+                    if dedupe_id and dedupe_id in seen_ids:
+                        continue
+                    if dedupe_id:
+                        seen_ids.add(dedupe_id)
+                    enriched = dict(item)
+                    enriched["__lever_site"] = site
+                    yield enriched
+                    new_jobs += 1
+                if new_jobs == 0 or len(jobs) < limit:
+                    break
+
+    def iter_normalized_jobs(self, pages: int) -> Iterable[Dict]:
+        """Yield normalized jobs from all configured public sources."""
+        for job in self.fetch_muse_jobs(pages=pages):
+            normalized = self._normalize_muse_job(job)
+            if normalized:
+                yield normalized
+        for job in self.fetch_greenhouse_jobs(pages=pages):
+            normalized = self._normalize_greenhouse_job(job)
+            if normalized:
+                yield normalized
+        for job in self.fetch_lever_jobs(pages=pages):
+            normalized = self._normalize_lever_job(job)
+            if normalized:
+                yield normalized
 
     def scan(self, keywords: List[str], pages: int = 3) -> ScanSummary:
         """Run full scan and return matched job listings."""
@@ -63,30 +149,27 @@ class JobScanner:
         enterprise_jobs = 0
         matches: List[JobMatch] = []
 
-        for job in self.fetch_muse_jobs(pages=pages):
+        for job in self.iter_normalized_jobs(pages=pages):
             scanned_jobs += 1
 
-            company_name = (
-                (job.get("company") or {}).get("name") or "Unknown Company"
-            ).strip()
+            company_name = (job.get("company_name") or "Unknown Company").strip()
             normalized_company = _normalize_name(company_name)
             if normalized_company not in enterprise_companies:
                 continue
             enterprise_jobs += 1
 
-            combined_text = _build_search_text(job)
+            combined_text = _build_search_text(job=job)
             matched = _keyword_hits(combined_text, normalized_keywords)
             if not matched:
                 continue
 
-            locations = job.get("locations") or []
-            location_name = locations[0].get("name", "Unknown") if locations else "N/A"
             matches.append(
                 JobMatch(
                     company=company_name,
                     title=(job.get("name") or "Untitled Role").strip(),
-                    location=location_name,
-                    url=(job.get("refs") or {}).get("landing_page", ""),
+                    location=(job.get("location") or "N/A").strip(),
+                    url=(job.get("url") or "").strip(),
+                    source=(job.get("source") or "Unknown").strip(),
                     matched_keywords=matched,
                 )
             )
@@ -96,6 +179,85 @@ class JobScanner:
             enterprise_jobs=enterprise_jobs,
             matches=matches,
         )
+
+    def _normalize_muse_job(self, job: Dict) -> Dict:
+        company_name = ((job.get("company") or {}).get("name") or "").strip()
+        if not company_name:
+            return {}
+        locations = job.get("locations") or []
+        location_name = locations[0].get("name", "N/A") if locations else "N/A"
+        return {
+            "name": (job.get("name") or "").strip(),
+            "description": (job.get("contents") or ""),
+            "company_name": company_name,
+            "location": location_name,
+            "url": ((job.get("refs") or {}).get("landing_page") or "").strip(),
+            "source": "The Muse",
+        }
+
+    def _normalize_greenhouse_job(self, job: Dict) -> Dict:
+        board_token = str(job.get("__greenhouse_board") or "").strip()
+        company_name = (
+            job.get("company_name")
+            or self._config.greenhouse_company_overrides.get(board_token, "")
+            or _token_to_company_name(board_token)
+        ).strip()
+        if not company_name:
+            return {}
+        location_name = (
+            ((job.get("location") or {}).get("name") or "N/A").strip() or "N/A"
+        )
+        metadata_entries = job.get("metadata") or []
+        metadata_text = " ".join(
+            str(entry.get("value", ""))
+            for entry in metadata_entries
+            if isinstance(entry, dict)
+        )
+        description = " ".join(
+            [
+                str(job.get("content", "")),
+                metadata_text,
+            ]
+        )
+        return {
+            "name": (job.get("title") or job.get("name") or "").strip(),
+            "description": description,
+            "company_name": company_name,
+            "location": location_name,
+            "url": (job.get("absolute_url") or "").strip(),
+            "source": "Greenhouse",
+        }
+
+    def _normalize_lever_job(self, job: Dict) -> Dict:
+        site_token = str(job.get("__lever_site") or "").strip()
+        company_name = (
+            self._config.lever_company_overrides.get(site_token, "")
+            or _token_to_company_name(site_token)
+        ).strip()
+        location_name = (
+            ((job.get("categories") or {}).get("location") or "N/A").strip() or "N/A"
+        )
+        descriptions = [
+            job.get("descriptionPlain", ""),
+            job.get("description", ""),
+            job.get("additionalPlain", ""),
+            job.get("listsPlain", ""),
+            ((job.get("categories") or {}).get("team") or ""),
+        ]
+        return {
+            "name": (job.get("text") or "").strip(),
+            "description": " ".join(str(text) for text in descriptions if text),
+            "company_name": company_name,
+            "location": location_name,
+            "url": (job.get("hostedUrl") or "").strip(),
+            "source": "Lever",
+        }
+
+    def _get_json(self, url: str, params: Dict[str, Any] | None = None) -> Any:
+        """GET JSON payload from an endpoint."""
+        response = requests.get(url, params=params, timeout=self._timeout_seconds)
+        response.raise_for_status()
+        return response.json()
 
 
 def _parse_employee_count(raw: str) -> int:
@@ -111,8 +273,10 @@ def _normalize_name(name: str) -> str:
 def _build_search_text(job: Dict) -> str:
     contents = [
         job.get("name", ""),
-        job.get("contents", ""),
-        ((job.get("company") or {}).get("name") or ""),
+        job.get("description", ""),
+        job.get("company_name", ""),
+        job.get("location", ""),
+        job.get("source", ""),
     ]
     return " ".join(contents).lower()
 
@@ -124,3 +288,8 @@ def _keyword_hits(search_text: str, keywords: List[str]) -> List[str]:
         if keyword.lower() in lowered_text:
             hits.append(keyword)
     return hits
+
+
+def _token_to_company_name(token: str) -> str:
+    cleaned = token.replace("-", " ").replace("_", " ").strip()
+    return " ".join(part.capitalize() for part in cleaned.split())

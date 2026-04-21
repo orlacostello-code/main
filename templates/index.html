@@ -24,8 +24,9 @@
 <body>
   <h1>Enterprise Job Keyword Scanner</h1>
   <p class="sub">
-    Scan public job listings and surface enterprise companies (&gt; 1,000 employees)
-    mentioning tools like OpenAI, Cursor, GitHub Copilot, Claude Code, and Windsurf.
+    Scan public job listings from The Muse, Greenhouse, and Lever, then surface
+    enterprise companies (&gt; 1,000 employees) mentioning tools like OpenAI, Cursor,
+    GitHub Copilot, Claude Code, and Windsurf.
   </p>
 
   <form method="post" action="/scan">
@@ -38,7 +39,7 @@
       placeholder="{{ default_keywords }}"
     >
 
-    <label for="pages">Pages to scan (The Muse API)</label>
+    <label for="pages">Pages to scan per source</label>
     <input id="pages" name="pages" type="number" min="1" max="20" value="{{ pages }}">
 
     <button type="submit">Run Scan</button>
@@ -63,6 +64,7 @@
       <thead>
         <tr>
           <th>Company</th>
+          <th>Source</th>
           <th>Title</th>
           <th>Location</th>
           <th>Matched Keywords</th>
@@ -73,6 +75,7 @@
         {% for match in result.matches %}
         <tr>
           <td>{{ match.company }}</td>
+          <td>{{ match.source }}</td>
           <td>{{ match.title }}</td>
           <td>{{ match.location }}</td>
           <td>{{ match.matched_keywords | join(", ") }}</td>

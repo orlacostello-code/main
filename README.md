@@ -1,13 +1,16 @@
 # Enterprise Job Keyword Scanner (MVP)
 
-This repository contains an MVP app for enterprise SaaS sales teams.  
+This repository contains an MVP app for enterprise SaaS sales teams.
 It scans public job postings, filters to enterprise companies (1,000+ employees),
 and returns roles that mention target AI/coding-assistant keywords.
 
 ## What it does
 
 - Fetches a list of enterprise companies from a public Fortune 1000 dataset.
-- Pulls jobs from The Muse public jobs API.
+- Pulls jobs from:
+  - The Muse public jobs API
+  - Greenhouse public boards API
+  - Lever public postings API
 - Filters jobs to enterprise companies.
 - Matches jobs against configurable keywords such as:
   - OpenAI
@@ -22,10 +25,10 @@ and returns roles that mention target AI/coding-assistant keywords.
 ## Quick start
 
 ```bash
-python -m venv .venv
+python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
-uvicorn app.main:app --reload
+python3 -m pip install -r requirements.txt
+python3 -m uvicorn app.main:app --reload
 ```
 
 Open `http://127.0.0.1:8000` in your browser.
@@ -54,14 +57,16 @@ curl -X POST "http://127.0.0.1:8000/api/scan" \
 ## Testing
 
 ```bash
-pytest
+python3 -m pytest
 ```
 
 ## Notes / next steps
 
 - Current enterprise-company identification is based on Fortune 1000 membership.
-- Current jobs source is The Muse public API.
+- Current jobs sources are The Muse, Greenhouse, and Lever public APIs.
+- Greenhouse and Lever use configurable lists of board/site tokens
+  in `app/config.py`.
 - To productionize:
-  - Add more job sources (LinkedIn partner feeds, Greenhouse, Lever, etc.).
+  - Add more job sources (LinkedIn partner feeds, Workday, SmartRecruiters, etc.).
   - Add persistence (Postgres) and historical trend tracking.
   - Add account-level enrichment and CRM export.

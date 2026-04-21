@@ -9,21 +9,36 @@ from app.scanner import JobScanner
 class FakeScanner(JobScanner):
     """Overrides network calls for deterministic tests."""
 
-    def __init__(self, config: AppConfig, jobs: List[Dict], companies: List[str]) -> None:
+    def __init__(
+        self,
+        config: AppConfig,
+        muse_jobs: List[Dict],
+        greenhouse_jobs: List[Dict],
+        lever_jobs: List[Dict],
+        companies: List[str],
+    ) -> None:
         super().__init__(config=config)
-        self._jobs = jobs
+        self._muse_jobs = muse_jobs
+        self._greenhouse_jobs = greenhouse_jobs
+        self._lever_jobs = lever_jobs
         self._companies = companies
 
     def load_enterprise_companies(self):
         return set(self._companies)
 
     def fetch_muse_jobs(self, pages: int) -> Iterable[Dict]:
-        return list(self._jobs)
+        return list(self._muse_jobs)
+
+    def fetch_greenhouse_jobs(self, pages: int) -> Iterable[Dict]:
+        return list(self._greenhouse_jobs)
+
+    def fetch_lever_jobs(self, pages: int) -> Iterable[Dict]:
+        return list(self._lever_jobs)
 
 
 def test_scan_matches_only_enterprise_companies_and_keywords():
     config = AppConfig()
-    jobs = [
+    muse_jobs = [
         {
             "name": "Enterprise Account Executive",
             "contents": "Use OpenAI and GitHub Copilot to support customer rollouts",
@@ -46,20 +61,49 @@ def test_scan_matches_only_enterprise_companies_and_keywords():
             "refs": {"landing_page": "https://example.com/job3"},
         },
     ]
-    scanner = FakeScanner(config=config, jobs=jobs, companies=["acme corp"])
+    greenhouse_jobs = [
+        {
+            "title": "Sales Director",
+            "content": "Expand pipeline with Cursor and enterprise AI workflows.",
+            "location": {"name": "Remote"},
+            "absolute_url": "https://example.com/job-gh-1",
+            "__greenhouse_board": "acme-corp",
+        }
+    ]
+    lever_jobs = [
+        {
+            "text": "Account Executive",
+            "descriptionPlain": "Drive platform adoption.",
+            "categories": {"location": "San Francisco", "team": "Sales"},
+            "hostedUrl": "https://example.com/job-lev-1",
+            "__lever_site": "tiny-startup",
+        }
+    ]
+    scanner = FakeScanner(
+        config=config,
+        muse_jobs=muse_jobs,
+        greenhouse_jobs=greenhouse_jobs,
+        lever_jobs=lever_jobs,
+        companies=["acme corp"],
+    )
 
     summary = scanner.scan(keywords=["OpenAI", "Cursor"], pages=1)
 
-    assert summary.scanned_jobs == 3
-    assert summary.enterprise_jobs == 2
-    assert len(summary.matches) == 1
+    assert summary.scanned_jobs == 5
+    assert summary.enterprise_jobs == 3
+    assert len(summary.matches) == 2
     assert summary.matches[0].company == "Acme Corp"
     assert summary.matches[0].matched_keywords == ["OpenAI"]
+    assert summary.matches[1].source == "Greenhouse"
+    assert summary.matches[1].matched_keywords == ["Cursor"]
 
 
 def test_scan_uses_default_keywords_when_empty_input():
-    config = AppConfig(keyword_list=["Windsurf"])
-    jobs = [
+    config = AppConfig(
+        keyword_list=["Windsurf"],
+        lever_company_overrides={"global-tech": "Global Tech"},
+    )
+    muse_jobs = [
         {
             "name": "Strategic AE",
             "contents": "Champion Windsurf and AI coding practices",
@@ -68,9 +112,27 @@ def test_scan_uses_default_keywords_when_empty_input():
             "refs": {"landing_page": "https://example.com/job4"},
         }
     ]
-    scanner = FakeScanner(config=config, jobs=jobs, companies=["global tech"])
+    greenhouse_jobs = []
+    lever_jobs = [
+        {
+            "text": "Solutions Engineer",
+            "descriptionPlain": "Help customers evaluate Windsurf workflows",
+            "categories": {"location": "Remote", "team": "Sales"},
+            "hostedUrl": "https://example.com/job5",
+            "__lever_site": "global-tech",
+        }
+    ]
+    scanner = FakeScanner(
+        config=config,
+        muse_jobs=muse_jobs,
+        greenhouse_jobs=greenhouse_jobs,
+        lever_jobs=lever_jobs,
+        companies=["global tech"],
+    )
 
     summary = scanner.scan(keywords=[], pages=1)
 
-    assert len(summary.matches) == 1
+    assert len(summary.matches) == 2
     assert summary.matches[0].matched_keywords == ["Windsurf"]
+    assert summary.matches[1].source == "Lever"
+    assert summary.matches[1].matched_keywords == ["Windsurf"]
