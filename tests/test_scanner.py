@@ -3,6 +3,8 @@ from __future__ import annotations
 from typing import Dict, Iterable, List
 
 from app.config import AppConfig
+from app.main import _build_company_results
+from app.models import JobMatch
 from app.scanner import JobScanner
 
 
@@ -200,3 +202,40 @@ def test_load_enterprise_companies_supports_employee_column_variants() -> None:
     companies = scanner.load_enterprise_companies()
 
     assert companies == {"acme corp", "big co"}
+
+
+def test_build_company_results_groups_matches_by_company() -> None:
+    matches = [
+        JobMatch(
+            company="Acme Corp",
+            title="AE",
+            location="Remote",
+            url="https://example.com/ae",
+            source="Workday",
+            matched_keywords=["OpenAI"],
+        ),
+        JobMatch(
+            company="Beta Inc",
+            title="SE",
+            location="New York, NY",
+            url="https://example.com/se",
+            source="Greenhouse",
+            matched_keywords=["Cursor"],
+        ),
+        JobMatch(
+            company="Acme Corp",
+            title="Sales Director",
+            location="Austin, TX",
+            url="https://example.com/sd",
+            source="SmartRecruiters",
+            matched_keywords=["Cursor", "OpenAI"],
+        ),
+    ]
+
+    companies = _build_company_results(matches)
+
+    assert [company.company for company in companies] == ["Acme Corp", "Beta Inc"]
+    assert companies[0].match_count == 2
+    assert companies[0].keywords == ["Cursor", "OpenAI"]
+    assert companies[0].sources == ["SmartRecruiters", "Workday"]
+    assert companies[1].match_count == 1

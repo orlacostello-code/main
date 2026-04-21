@@ -7,6 +7,7 @@
   <style>
     body { font-family: Arial, sans-serif; margin: 2rem; color: #222; }
     h1 { margin-bottom: 0.5rem; }
+    h3 { margin-top: 1.5rem; margin-bottom: 0.4rem; }
     .sub { color: #666; margin-bottom: 1.5rem; }
     form { border: 1px solid #ddd; padding: 1rem; border-radius: 8px; max-width: 900px; }
     label { display: block; font-weight: 600; margin-top: 0.8rem; }
@@ -15,6 +16,10 @@
     button:hover { background: #003f9e; }
     .error { margin-top: 1rem; color: #b00020; font-weight: 600; }
     .card { margin-top: 1.25rem; border: 1px solid #ddd; border-radius: 8px; padding: 1rem; max-width: 1000px; }
+    .anchor-link { color: #0052cc; text-decoration: none; font-weight: 600; }
+    .anchor-link:hover { text-decoration: underline; }
+    details { margin-top: 0.8rem; border: 1px solid #eee; border-radius: 8px; padding: 0.65rem; }
+    details summary { cursor: pointer; font-weight: 600; }
     table { width: 100%; border-collapse: collapse; margin-top: 0.8rem; }
     th, td { border-bottom: 1px solid #eee; padding: 0.5rem; text-align: left; vertical-align: top; }
     th { background: #f8f8f8; }
@@ -60,36 +65,63 @@
     <p class="muted"><strong>Keywords:</strong> {{ result.keywords | join(", ") }}</p>
 
     {% if result.matches %}
+    <h3>Company Summary</h3>
+    <p class="muted">Click a company name to jump to its matched postings.</p>
     <table>
       <thead>
         <tr>
           <th>Company</th>
-          <th>Source</th>
-          <th>Title</th>
-          <th>Location</th>
+          <th>Matched Jobs</th>
+          <th>Sources</th>
           <th>Matched Keywords</th>
-          <th>Link</th>
         </tr>
       </thead>
       <tbody>
-        {% for match in result.matches %}
+        {% for company in result.company_results %}
         <tr>
-          <td>{{ match.company }}</td>
-          <td>{{ match.source }}</td>
-          <td>{{ match.title }}</td>
-          <td>{{ match.location }}</td>
-          <td>{{ match.matched_keywords | join(", ") }}</td>
-          <td>
-            {% if match.url %}
-            <a href="{{ match.url }}" target="_blank" rel="noreferrer">View posting</a>
-            {% else %}
-            N/A
-            {% endif %}
-          </td>
+          <td><a class="anchor-link" href="#company-{{ company.anchor_id }}">{{ company.company }}</a></td>
+          <td>{{ company.match_count }}</td>
+          <td>{{ company.sources | join(", ") }}</td>
+          <td>{{ company.keywords | join(", ") }}</td>
         </tr>
         {% endfor %}
       </tbody>
     </table>
+
+    <h3>Company Details</h3>
+    {% for company in result.company_results %}
+    <details id="company-{{ company.anchor_id }}">
+      <summary>{{ company.company }} ({{ company.match_count }} matched job{% if company.match_count != 1 %}s{% endif %})</summary>
+      <table>
+        <thead>
+          <tr>
+            <th>Source</th>
+            <th>Title</th>
+            <th>Location</th>
+            <th>Matched Keywords</th>
+            <th>Link</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for match in company.jobs %}
+          <tr>
+            <td>{{ match.source }}</td>
+            <td>{{ match.title }}</td>
+            <td>{{ match.location }}</td>
+            <td>{{ match.matched_keywords | join(", ") }}</td>
+            <td>
+              {% if match.url %}
+              <a href="{{ match.url }}" target="_blank" rel="noreferrer">View posting</a>
+              {% else %}
+              N/A
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </details>
+    {% endfor %}
     {% else %}
     <p>No matching enterprise job postings were found for the selected keywords.</p>
     {% endif %}

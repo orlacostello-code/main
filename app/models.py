@@ -29,6 +29,17 @@ class ScanSummary:
     matches: List[JobMatch] = field(default_factory=list)
 
 
+@dataclass
+class CompanyResult:
+    """Grouped result for a single company and its matched jobs."""
+
+    company: str
+    match_count: int
+    keywords: List[str] = field(default_factory=list)
+    sources: List[str] = field(default_factory=list)
+    jobs: List[JobMatch] = field(default_factory=list)
+
+
 class ScanRequest(BaseModel):
     """Request payload used by API/UI scan endpoint."""
 
@@ -43,3 +54,4 @@ class ScanResponse(BaseModel):
     enterprise_jobs: int
     keywords: List[str]
     matches: List[JobMatch]
+    companies: List[CompanyResult] = Field(default_factory=list)
