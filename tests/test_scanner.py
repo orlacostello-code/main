@@ -15,12 +15,16 @@ class FakeScanner(JobScanner):
         muse_jobs: List[Dict],
         greenhouse_jobs: List[Dict],
         lever_jobs: List[Dict],
+        smartrecruiters_jobs: List[Dict],
+        workday_jobs: List[Dict],
         companies: List[str],
     ) -> None:
         super().__init__(config=config)
         self._muse_jobs = muse_jobs
         self._greenhouse_jobs = greenhouse_jobs
         self._lever_jobs = lever_jobs
+        self._smartrecruiters_jobs = smartrecruiters_jobs
+        self._workday_jobs = workday_jobs
         self._companies = companies
 
     def load_enterprise_companies(self):
@@ -35,9 +39,15 @@ class FakeScanner(JobScanner):
     def fetch_lever_jobs(self, pages: int) -> Iterable[Dict]:
         return list(self._lever_jobs)
 
+    def fetch_smartrecruiters_jobs(self, pages: int) -> Iterable[Dict]:
+        return list(self._smartrecruiters_jobs)
+
+    def fetch_workday_jobs(self, pages: int) -> Iterable[Dict]:
+        return list(self._workday_jobs)
+
 
 def test_scan_matches_only_enterprise_companies_and_keywords():
-    config = AppConfig()
+    config = AppConfig(workday_company_overrides={"acme/external": "Acme Corp"})
     muse_jobs = [
         {
             "name": "Enterprise Account Executive",
@@ -79,23 +89,48 @@ def test_scan_matches_only_enterprise_companies_and_keywords():
             "__lever_site": "tiny-startup",
         }
     ]
+    smartrecruiters_jobs = [
+        {
+            "name": "Enterprise Sales Specialist",
+            "location": {"city": "Austin", "region": "TX", "country": "US"},
+            "department": {"label": "Sales"},
+            "typeOfEmployment": {"label": "Full-time"},
+            "ref": "https://example.com/job-sr-1",
+            "__smartrecruiters_company": "acme-corp",
+        }
+    ]
+    workday_jobs = [
+        {
+            "title": "Principal AE",
+            "locationsText": ["Remote, US"],
+            "externalPath": "/job/Remote-US/Principal-AE_JR-001",
+            "bulletFields": ["Use OpenAI and GenAI workflows for enterprise accounts"],
+            "__workday_tenant": "acme",
+            "__workday_site": "external",
+            "__workday_host": "acme.wd1.myworkdayjobs.com",
+        }
+    ]
     scanner = FakeScanner(
         config=config,
         muse_jobs=muse_jobs,
         greenhouse_jobs=greenhouse_jobs,
         lever_jobs=lever_jobs,
+        smartrecruiters_jobs=smartrecruiters_jobs,
+        workday_jobs=workday_jobs,
         companies=["acme corp"],
     )
 
     summary = scanner.scan(keywords=["OpenAI", "Cursor"], pages=1)
 
-    assert summary.scanned_jobs == 5
-    assert summary.enterprise_jobs == 3
-    assert len(summary.matches) == 2
+    assert summary.scanned_jobs == 7
+    assert summary.enterprise_jobs == 5
+    assert len(summary.matches) == 3
     assert summary.matches[0].company == "Acme Corp"
     assert summary.matches[0].matched_keywords == ["OpenAI"]
     assert summary.matches[1].source == "Greenhouse"
     assert summary.matches[1].matched_keywords == ["Cursor"]
+    assert summary.matches[2].source == "Workday"
+    assert summary.matches[2].matched_keywords == ["OpenAI"]
 
 
 def test_scan_uses_default_keywords_when_empty_input():
@@ -122,11 +157,24 @@ def test_scan_uses_default_keywords_when_empty_input():
             "__lever_site": "global-tech",
         }
     ]
+    smartrecruiters_jobs = [
+        {
+            "name": "Solutions Architect",
+            "location": {"city": "Chicago", "region": "IL", "country": "US"},
+            "department": {"label": "Sales Engineering"},
+            "typeOfEmployment": {"label": "Full-time"},
+            "ref": "https://example.com/job6",
+            "__smartrecruiters_company": "global-tech",
+        }
+    ]
+    workday_jobs = []
     scanner = FakeScanner(
         config=config,
         muse_jobs=muse_jobs,
         greenhouse_jobs=greenhouse_jobs,
         lever_jobs=lever_jobs,
+        smartrecruiters_jobs=smartrecruiters_jobs,
+        workday_jobs=workday_jobs,
         companies=["global tech"],
     )
 

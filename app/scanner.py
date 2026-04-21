@@ -122,6 +122,79 @@ class JobScanner:
                 if new_jobs == 0 or len(jobs) < limit:
                     break
 
+    def fetch_smartrecruiters_jobs(self, pages: int) -> Iterable[Dict]:
+        """Yield jobs from SmartRecruiters postings API for configured companies."""
+        limit = 100
+        for company in self._config.smartrecruiters_companies:
+            endpoint = f"{self._config.smartrecruiters_jobs_base_url}/{company}/postings"
+            offset = 0
+            seen_ids: Set[str] = set()
+            for _ in range(pages):
+                try:
+                    payload = self._get_json(
+                        endpoint,
+                        params={"limit": limit, "offset": offset},
+                    )
+                except requests.RequestException:
+                    break
+                jobs = payload.get("content", []) if isinstance(payload, dict) else []
+                if not jobs:
+                    break
+                for item in jobs:
+                    dedupe_id = str(item.get("id") or "").strip()
+                    if dedupe_id and dedupe_id in seen_ids:
+                        continue
+                    if dedupe_id:
+                        seen_ids.add(dedupe_id)
+                    enriched = dict(item)
+                    enriched["__smartrecruiters_company"] = company
+                    yield enriched
+                offset += limit
+                total_found = int(payload.get("totalFound", 0) or 0)
+                if total_found and offset >= total_found:
+                    break
+
+    def fetch_workday_jobs(self, pages: int) -> Iterable[Dict]:
+        """Yield jobs from Workday CXS endpoints for configured tenants/sites."""
+        limit = 20
+        for site in self._config.workday_sites:
+            host = str(site.get("host", "")).strip()
+            tenant = str(site.get("tenant", "")).strip()
+            site_name = str(site.get("site", "")).strip()
+            if not host or not tenant or not site_name:
+                continue
+            endpoint = self._config.workday_jobs_path.format(
+                host=host, tenant=tenant, site=site_name
+            )
+            offset = 0
+            seen_ids: Set[str] = set()
+            for _ in range(pages):
+                try:
+                    payload = self._get_json(
+                        endpoint,
+                        params={"limit": limit, "offset": offset},
+                    )
+                except requests.RequestException:
+                    break
+                jobs = payload.get("jobPostings", []) if isinstance(payload, dict) else []
+                if not jobs:
+                    break
+                for item in jobs:
+                    dedupe_id = str(item.get("bulletFields") or item.get("title") or "")
+                    dedupe_id = f"{tenant}:{site_name}:{dedupe_id}"
+                    if dedupe_id in seen_ids:
+                        continue
+                    seen_ids.add(dedupe_id)
+                    enriched = dict(item)
+                    enriched["__workday_tenant"] = tenant
+                    enriched["__workday_site"] = site_name
+                    enriched["__workday_host"] = host
+                    yield enriched
+                offset += limit
+                total_found = int(payload.get("total", 0) or 0)
+                if total_found and offset >= total_found:
+                    break
+
     def iter_normalized_jobs(self, pages: int) -> Iterable[Dict]:
         """Yield normalized jobs from all configured public sources."""
         for job in self.fetch_muse_jobs(pages=pages):
@@ -134,6 +207,14 @@ class JobScanner:
                 yield normalized
         for job in self.fetch_lever_jobs(pages=pages):
             normalized = self._normalize_lever_job(job)
+            if normalized:
+                yield normalized
+        for job in self.fetch_smartrecruiters_jobs(pages=pages):
+            normalized = self._normalize_smartrecruiters_job(job)
+            if normalized:
+                yield normalized
+        for job in self.fetch_workday_jobs(pages=pages):
+            normalized = self._normalize_workday_job(job)
             if normalized:
                 yield normalized
 
@@ -250,6 +331,81 @@ class JobScanner:
             "location": location_name,
             "url": (job.get("hostedUrl") or "").strip(),
             "source": "Lever",
+        }
+
+    def _normalize_smartrecruiters_job(self, job: Dict) -> Dict:
+        company_token = str(job.get("__smartrecruiters_company") or "").strip()
+        company_name = (
+            self._config.smartrecruiters_company_overrides.get(company_token, "")
+            or _token_to_company_name(company_token)
+        ).strip()
+        if not company_name:
+            return {}
+        location = job.get("location") or {}
+        location_name = " ".join(
+            part
+            for part in [
+                str(location.get("city") or "").strip(),
+                str(location.get("region") or "").strip(),
+                str(location.get("country") or "").strip(),
+            ]
+            if part
+        )
+        location_name = location_name or "N/A"
+        department = job.get("department") if isinstance(job.get("department"), dict) else {}
+        employment = (
+            job.get("typeOfEmployment")
+            if isinstance(job.get("typeOfEmployment"), dict)
+            else {}
+        )
+        description = " ".join(
+            [
+                str(job.get("name") or ""),
+                str(department.get("label") or ""),
+                str(employment.get("label") or ""),
+            ]
+        )
+        return {
+            "name": (job.get("name") or "").strip(),
+            "description": description,
+            "company_name": company_name,
+            "location": location_name,
+            "url": (job.get("ref") or "").strip(),
+            "source": "SmartRecruiters",
+        }
+
+    def _normalize_workday_job(self, job: Dict) -> Dict:
+        tenant = str(job.get("__workday_tenant") or "").strip()
+        site_name = str(job.get("__workday_site") or "").strip()
+        host = str(job.get("__workday_host") or "").strip()
+        override_key = f"{tenant}/{site_name}"
+        company_name = (
+            self._config.workday_company_overrides.get(override_key, "")
+            or _token_to_company_name(tenant)
+        ).strip()
+        if not company_name:
+            return {}
+        locations = job.get("locationsText") or []
+        location_name = ", ".join(str(item).strip() for item in locations if str(item).strip())
+        location_name = location_name or "N/A"
+        external_path = (job.get("externalPath") or "").strip()
+        posting_url = ""
+        if external_path and host:
+            posting_url = f"https://{host}{external_path}"
+        description = " ".join(
+            [
+                str(job.get("title") or ""),
+                str(job.get("postedOn") or ""),
+                str(job.get("bulletFields") or ""),
+            ]
+        )
+        return {
+            "name": (job.get("title") or "").strip(),
+            "description": description,
+            "company_name": company_name,
+            "location": location_name,
+            "url": posting_url,
+            "source": "Workday",
         }
 
     def _get_json(self, url: str, params: Dict[str, Any] | None = None) -> Any:

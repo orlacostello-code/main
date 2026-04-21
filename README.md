@@ -11,6 +11,8 @@ and returns roles that mention target AI/coding-assistant keywords.
   - The Muse public jobs API
   - Greenhouse public boards API
   - Lever public postings API
+  - SmartRecruiters postings API
+  - Workday CXS jobs endpoints
 - Filters jobs to enterprise companies.
 - Matches jobs against configurable keywords such as:
   - OpenAI
@@ -64,10 +66,12 @@ python3 -m pytest
 
 - Current enterprise-company identification is based on Fortune 1000 membership
   from a public 2021 Fortune dataset with employee counts.
-- Current jobs sources are The Muse, Greenhouse, and Lever public APIs.
-- Greenhouse and Lever use configurable lists of board/site tokens
+- Current jobs sources are The Muse, Greenhouse, Lever, SmartRecruiters,
+  and Workday public endpoints.
+- Greenhouse, Lever, SmartRecruiters, and Workday sources use configurable
+  board/site/company settings
   in `app/config.py`.
 - To productionize:
-  - Add more job sources (LinkedIn partner feeds, Workday, SmartRecruiters, etc.).
+  - Add more job sources (LinkedIn partner feeds, Ashby, iCIMS, etc.).
   - Add persistence (Postgres) and historical trend tracking.
   - Add account-level enrichment and CRM export.
